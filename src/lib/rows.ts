@@ -75,7 +75,7 @@ export function buildRow(o: Operation, d: RowCalc, a: Account): Row {
     typeLabel: 'Venda LATAM',
     tagClass: 'tag-accent',
     qty: num(o.qty),
-    qtySub: o.cpfQty ? `milhas LATAM · ${o.cpfQty === 1 ? '1 CPF' : `${o.cpfQty} CPFs`}` : 'milhas LATAM',
+    qtySub: o.cpfQty ? `milhas LATAM · ${o.cpfQty === 1 ? '1 CPF' : `${o.cpfQty} CPFs`}${d.cpfRelease ? ` (liberam ${dt(d.cpfRelease)})` : ''}` : 'milhas LATAM',
     value: money(o.value),
     valueSub: 'recebido',
     milheiro: money(d.milheiro),

@@ -2,11 +2,11 @@ import type { Operation } from './types.ts';
 
 export type Wallet = { q: number; c: number };
 
-/** Limite de CPFs (beneficiários) emitidos por conta LATAM em cada ciclo de 12 meses. */
+/** Máximo de CPFs (beneficiários) em uso ao mesmo tempo numa conta LATAM. */
 export const CPF_LIMIT = 24;
 
-/** Ciclo de CPFs: começa na primeira emissão e zera 12 meses depois (end é exclusivo). */
-export type CpfCycle = { start: string; end: string; used: number };
+/** Cada emissão ocupa os CPFs por 12 meses e os libera na mesma data do ano seguinte. */
+export type CpfEmission = { opId: string; date: string; qty: number; release: string };
 
 /** Mesma data 12 meses depois (29/02 vira 01/03). */
 export const plus12Months = (iso: string) => {
@@ -14,9 +14,23 @@ export const plus12Months = (iso: string) => {
   return m === '02' && d === '29' ? `${+y + 1}-03-01` : `${+y + 1}-${m}-${d}`;
 };
 
-/** Ciclo em vigor na data informada; null se não houver (contador zerado). */
-export const cpfCycleAt = (rep: Pick<Replay, 'cpfCycle'>, iso: string): CpfCycle | null =>
-  rep.cpfCycle && iso >= rep.cpfCycle.start && iso < rep.cpfCycle.end ? rep.cpfCycle : null;
+export type CpfStatus = {
+  used: number; // CPFs em uso na data
+  free: number; // disponíveis
+  next: { date: string; qty: number } | null; // próxima liberação
+};
+
+/** CPFs em uso na data: emissões feitas até a data e ainda não liberadas. */
+export function cpfStatusAt(emissions: CpfEmission[], iso: string): CpfStatus {
+  const active = emissions.filter(e => e.date <= iso && e.release > iso);
+  const used = active.reduce((s, e) => s + e.qty, 0);
+  let next: CpfStatus['next'] = null;
+  for (const e of active) {
+    if (!next || e.release < next.date) next = { date: e.release, qty: e.qty };
+    else if (e.release === next.date) next.qty += e.qty;
+  }
+  return { used, free: Math.max(CPF_LIMIT - used, 0), next };
+}
 
 export type RowCalc = {
   credited?: number;
@@ -28,11 +42,11 @@ export type RowCalc = {
   cost?: number;
   profit?: number;
   costMilheiro?: number;
-  cpfCycleStart?: string; // início do ciclo de 12 meses desta venda
-  cpfCycleEnd?: string; // data em que o contador zera
-  cpfBefore?: number; // CPFs já emitidos no ciclo antes desta venda
+  cpfBefore?: number; // CPFs em uso na data, antes desta venda
   cpfAfter?: number;
   cpfOver?: boolean;
+  cpfRelease?: string; // data em que os CPFs desta venda são liberados
+  cpfNext?: { date: string; qty: number } | null; // próxima liberação antes desta venda
 };
 
 export type Replay = {
@@ -41,7 +55,7 @@ export type Replay = {
   profit: number;
   revenue: number;
   sales: number;
-  cpfCycle: CpfCycle | null; // último ciclo aberto
+  cpfEmissions: CpfEmission[];
   rows: Record<string, RowCalc>;
 };
 
@@ -61,7 +75,7 @@ export function replay(ops: Operation[]): Replay {
   let revenue = 0;
   let sales = 0;
   const rows: Record<string, RowCalc> = {};
-  let cycle: CpfCycle | null = null;
+  const cpfEmissions: CpfEmission[] = [];
   const out = (w: Wallet, q: number) => {
     const c = w.q > 0 ? w.c * Math.min(q / w.q, 1) : 0;
     w.q -= q;
@@ -99,17 +113,14 @@ export function replay(ops: Operation[]): Replay {
       d.milheiro = o.qty ? (value / o.qty) * 1000 : 0;
       d.costMilheiro = o.qty ? (d.cost / o.qty) * 1000 : 0;
       const n = o.cpfQty || 0;
-      const active = cycle && o.date < cycle.end ? cycle : null;
-      // A primeira emissão após o ciclo anterior vencer abre um novo ciclo de 12 meses.
-      if (!active && n > 0) cycle = { start: o.date, end: plus12Months(o.date), used: 0 };
-      const cur = active || (n > 0 ? cycle : null);
-      d.cpfBefore = cur ? cur.used : 0;
-      d.cpfAfter = d.cpfBefore + n;
+      const st = cpfStatusAt(cpfEmissions, o.date);
+      d.cpfBefore = st.used;
+      d.cpfAfter = st.used + n;
       d.cpfOver = d.cpfAfter > CPF_LIMIT;
-      if (cur) {
-        cur.used = d.cpfAfter;
-        d.cpfCycleStart = cur.start;
-        d.cpfCycleEnd = cur.end;
+      d.cpfNext = st.next;
+      if (n > 0) {
+        d.cpfRelease = plus12Months(o.date);
+        cpfEmissions.push({ opId: o.id, date: o.date, qty: n, release: d.cpfRelease });
       }
       profit += d.profit;
       revenue += value;
@@ -117,7 +128,7 @@ export function replay(ops: Operation[]): Replay {
     }
     rows[o.id] = d;
   }
-  return { L, T, profit, revenue, sales, cpfCycle: cycle, rows };
+  return { L, T, profit, revenue, sales, cpfEmissions, rows };
 }
 
 export type Totals = { lq: number; lc: number; tq: number; tc: number; profit: number; revenue: number; sales: number };

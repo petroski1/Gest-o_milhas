@@ -70,6 +70,10 @@ export function OpModal({ initial, data, onClose, onSave }: {
   const dr = toOp(op);
   const rep = replay([...data.ops.filter(o => o.accountId === op.accountId && o.id !== op.id), dr]);
   const d = rep.rows[dr.id] || {};
+  // Venda posterior que passaria do limite de CPFs por causa desta operação (ex.: lançamento retroativo).
+  const accountOps = data.ops.filter(o => o.accountId === op.accountId);
+  const baseline = replay(accountOps);
+  const laterOver = accountOps.find(o => o.id !== op.id && rep.rows[o.id]?.cpfOver && !baseline.rows[o.id]?.cpfOver);
 
   type Line = { label: string; value: string; color?: string };
   let lines: Line[] = [];
@@ -106,14 +110,15 @@ export function OpModal({ initial, data, onClose, onSave }: {
       { label: 'Milheiro de venda', value: money(d.milheiro) },
       { label: 'Lucro', value: money(d.profit), color: profitColor(d.profit || 0) },
       {
-        label: d.cpfCycleStart ? `CPFs no ciclo (desde ${dt(d.cpfCycleStart)})` : 'CPFs no ciclo',
+        label: 'CPFs em uso na data',
         value: `${d.cpfBefore || 0} → ${d.cpfAfter || 0} de ${CPF_LIMIT}`,
         color: d.cpfOver ? 'var(--color-accent-300)' : undefined,
       },
     ];
-    if (d.cpfCycleEnd) lines.push({ label: 'Contador zera em', value: dt(d.cpfCycleEnd) });
+    if (d.cpfOver && d.cpfNext) lines.push({ label: 'Próxima liberação', value: `+${d.cpfNext.qty} em ${dt(d.cpfNext.date)}` });
+    else if (d.cpfRelease) lines.push({ label: 'Estes CPFs liberam em', value: dt(d.cpfRelease) });
   }
-  if (d.cpfOver && !error) lines.push({ label: 'Atenção', value: `Limite de ${CPF_LIMIT} CPFs no ciclo excedido`, color: 'var(--color-accent-300)' });
+  if (d.cpfOver && !error) lines.push({ label: 'Atenção', value: `Limite de ${CPF_LIMIT} CPFs excedido`, color: 'var(--color-accent-300)' });
   if (d.insufficient && !error) lines.push({ label: 'Atenção', value: 'Saldo insuficiente nesta data', color: 'var(--color-accent-300)' });
 
   async function save() {
@@ -124,7 +129,12 @@ export function OpModal({ initial, data, onClose, onSave }: {
     if ((dr.bonus || 0) < 0 || (dr.bonusQty || 0) < 0) return setError('Bônus inválido.');
     if (op.type === 'venda' && !((dr.cpfQty || 0) > 0)) return setError('Informe os CPFs emitidos.');
     if (d.insufficient) return setError('Saldo insuficiente na data informada.');
-    if (d.cpfOver) return setError(`Limite de ${CPF_LIMIT} CPFs excedido (restam ${Math.max(CPF_LIMIT - (d.cpfBefore || 0), 0)}; zera em ${dt(d.cpfCycleEnd)}).`);
+    if (d.cpfOver) {
+      const free = Math.max(CPF_LIMIT - (d.cpfBefore || 0), 0);
+      const next = d.cpfNext ? ` Próxima liberação: +${d.cpfNext.qty} em ${dt(d.cpfNext.date)}.` : '';
+      return setError(`Limite de ${CPF_LIMIT} CPFs excedido: disponíveis ${free} nesta data.${next}`);
+    }
+    if (laterOver) return setError(`Com esta operação, a venda de ${dt(laterOver.date)} passaria do limite de ${CPF_LIMIT} CPFs.`);
     const rec: Operation = { id: op.id || '', accountId: op.accountId, type: op.type, date: op.date, qty: dr.qty, createdAt: op.createdAt || Date.now() };
     if (op.type === 'transf') rec.bonus = dr.bonus;
     else {

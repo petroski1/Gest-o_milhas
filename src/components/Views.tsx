@@ -1,5 +1,5 @@
 import { ArrowRight, ListBullets, MagnifyingGlass, Minus, PencilSimple, Plus, UserPlus } from '@phosphor-icons/react';
-import { avg, CPF_LIMIT, cpfCycleAt, totals, type Replay } from '../lib/calc.ts';
+import { avg, CPF_LIMIT, cpfStatusAt, totals, type Replay } from '../lib/calc.ts';
 import { dec, dt, money, num, plural, today } from '../lib/format.ts';
 import type { Row } from '../lib/rows.ts';
 import type { Account, OpType } from '../lib/types.ts';
@@ -48,23 +48,22 @@ export function Dashboard({ accounts, reps, rows, filter, setFilter, goHist }: {
 type Mode = 'ambas' | 'livelo' | 'latam';
 
 export const cpfText = (rep: Replay) => {
-  const c = cpfCycleAt(rep, today());
-  return c ? `CPFs: ${c.used} de ${CPF_LIMIT} · zera em ${dt(c.end)}` : `CPFs: 0 de ${CPF_LIMIT} · sem ciclo aberto`;
+  const st = cpfStatusAt(rep.cpfEmissions, today());
+  return `CPFs: ${st.used} de ${CPF_LIMIT} em uso` + (st.next ? ` · +${st.next.qty} em ${dt(st.next.date)}` : '');
 };
 
 function CpfMeter({ rep }: { rep: Replay }) {
-  const c = cpfCycleAt(rep, today());
-  const used = c ? c.used : 0;
-  const pct = Math.min(used / CPF_LIMIT, 1) * 100;
-  const full = used >= CPF_LIMIT;
+  const st = cpfStatusAt(rep.cpfEmissions, today());
+  const pct = Math.min(st.used / CPF_LIMIT, 1) * 100;
+  const full = st.free === 0;
   return (
-    <div className="cpf-meter" title={c ? `Ciclo de ${dt(c.start)} a ${dt(c.end)} (limite ${CPF_LIMIT} CPFs)` : `O ciclo de 12 meses começa na próxima emissão`}>
+    <div className="cpf-meter" title={`Cada emissão libera seus CPFs 12 meses depois (limite ${CPF_LIMIT} em uso)`}>
       <div className="cpf-meter-row">
-        <span>CPFs {full ? '· limite atingido' : `· restam ${CPF_LIMIT - used}`}</span>
-        <span className="num" style={{ color: full ? 'var(--color-accent-300)' : 'var(--color-text)' }}>{used} / {CPF_LIMIT}</span>
+        <span>CPFs {full ? '· limite atingido' : `· disponíveis ${st.free}`}</span>
+        <span className="num" style={{ color: full ? 'var(--color-accent-300)' : 'var(--color-text)' }}>{st.used} / {CPF_LIMIT}</span>
       </div>
       <div className="cpf-bar"><div style={{ width: `${pct}%` }} /></div>
-      <div className="cpf-meter-row"><span>{c ? `Zera em ${dt(c.end)}` : 'Sem ciclo aberto'}</span></div>
+      <div className="cpf-meter-row"><span>{st.next ? `Libera +${st.next.qty} em ${dt(st.next.date)}` : 'Nenhum CPF em uso'}</span></div>
     </div>
   );
 }
