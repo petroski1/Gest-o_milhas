@@ -1,6 +1,6 @@
 import { ArrowRight, ListBullets, MagnifyingGlass, Minus, PencilSimple, Plus, UserPlus } from '@phosphor-icons/react';
-import { avg, CPF_LIMIT, totals, type Replay } from '../lib/calc.ts';
-import { dec, money, num, plural, today } from '../lib/format.ts';
+import { avg, CPF_LIMIT, cpfCycleAt, totals, type Replay } from '../lib/calc.ts';
+import { dec, dt, money, num, plural, today } from '../lib/format.ts';
 import type { Row } from '../lib/rows.ts';
 import type { Account, OpType } from '../lib/types.ts';
 import { OpsTable, Seg, StatCards } from './ui.tsx';
@@ -48,20 +48,23 @@ export function Dashboard({ accounts, reps, rows, filter, setFilter, goHist }: {
 type Mode = 'ambas' | 'livelo' | 'latam';
 
 export const cpfText = (rep: Replay) => {
-  const y = today().slice(0, 4);
-  return `CPFs ${y}: ${rep.cpfByYear[y] || 0} de ${CPF_LIMIT}`;
+  const c = cpfCycleAt(rep, today());
+  return c ? `CPFs: ${c.used} de ${CPF_LIMIT} · zera em ${dt(c.end)}` : `CPFs: 0 de ${CPF_LIMIT} · sem ciclo aberto`;
 };
 
-function CpfMeter({ used }: { used: number }) {
+function CpfMeter({ rep }: { rep: Replay }) {
+  const c = cpfCycleAt(rep, today());
+  const used = c ? c.used : 0;
   const pct = Math.min(used / CPF_LIMIT, 1) * 100;
   const full = used >= CPF_LIMIT;
   return (
-    <div className="cpf-meter" title={`CPFs emitidos em ${today().slice(0, 4)} (limite ${CPF_LIMIT} por ano)`}>
+    <div className="cpf-meter" title={c ? `Ciclo de ${dt(c.start)} a ${dt(c.end)} (limite ${CPF_LIMIT} CPFs)` : `O ciclo de 12 meses começa na próxima emissão`}>
       <div className="cpf-meter-row">
-        <span>CPFs {today().slice(0, 4)}</span>
-        <span className="num" style={{ color: full ? 'var(--color-accent-300)' : 'var(--color-text)' }}>{used} / {CPF_LIMIT}{full ? ' · limite atingido' : ` · restam ${CPF_LIMIT - used}`}</span>
+        <span>CPFs {full ? '· limite atingido' : `· restam ${CPF_LIMIT - used}`}</span>
+        <span className="num" style={{ color: full ? 'var(--color-accent-300)' : 'var(--color-text)' }}>{used} / {CPF_LIMIT}</span>
       </div>
       <div className="cpf-bar"><div style={{ width: `${pct}%` }} /></div>
+      <div className="cpf-meter-row"><span>{c ? `Zera em ${dt(c.end)}` : 'Sem ciclo aberto'}</span></div>
     </div>
   );
 }
@@ -86,7 +89,7 @@ function WalletCard({ account, rep, prog, onOp, onExtrato }: {
         <div className="fade-line" />
         <div className="v">{num(w.q)}</div><div className="v">{dec(avg(w))}</div><div className="v">{dec(w.c)}</div>
       </div>
-      {prog === 'latam' && <CpfMeter used={rep.cpfByYear[today().slice(0, 4)] || 0} />}
+      {prog === 'latam' && <CpfMeter rep={rep} />}
       <div className="wallet-actions">
         <button className="btn btn-primary btn-sm" onClick={() => onOp(account.id, prog === 'livelo' ? 'compra' : 'compra_latam')}><Plus />Comprar</button>
         <button className="btn btn-secondary btn-sm" onClick={() => onOp(account.id, prog === 'livelo' ? 'transf' : 'venda')}><Minus />{prog === 'livelo' ? 'Transferir' : 'Vender'}</button>

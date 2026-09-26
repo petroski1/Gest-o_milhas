@@ -2,8 +2,21 @@ import type { Operation } from './types.ts';
 
 export type Wallet = { q: number; c: number };
 
-/** Limite de CPFs (beneficiários) emitidos por conta LATAM no ano civil. */
+/** Limite de CPFs (beneficiários) emitidos por conta LATAM em cada ciclo de 12 meses. */
 export const CPF_LIMIT = 24;
+
+/** Ciclo de CPFs: começa na primeira emissão e zera 12 meses depois (end é exclusivo). */
+export type CpfCycle = { start: string; end: string; used: number };
+
+/** Mesma data 12 meses depois (29/02 vira 01/03). */
+export const plus12Months = (iso: string) => {
+  const [y, m, d] = iso.split('-');
+  return m === '02' && d === '29' ? `${+y + 1}-03-01` : `${+y + 1}-${m}-${d}`;
+};
+
+/** Ciclo em vigor na data informada; null se não houver (contador zerado). */
+export const cpfCycleAt = (rep: Pick<Replay, 'cpfCycle'>, iso: string): CpfCycle | null =>
+  rep.cpfCycle && iso >= rep.cpfCycle.start && iso < rep.cpfCycle.end ? rep.cpfCycle : null;
 
 export type RowCalc = {
   credited?: number;
@@ -15,8 +28,9 @@ export type RowCalc = {
   cost?: number;
   profit?: number;
   costMilheiro?: number;
-  cpfYear?: string;
-  cpfBefore?: number; // CPFs já emitidos no ano antes desta venda
+  cpfCycleStart?: string; // início do ciclo de 12 meses desta venda
+  cpfCycleEnd?: string; // data em que o contador zera
+  cpfBefore?: number; // CPFs já emitidos no ciclo antes desta venda
   cpfAfter?: number;
   cpfOver?: boolean;
 };
@@ -27,7 +41,7 @@ export type Replay = {
   profit: number;
   revenue: number;
   sales: number;
-  cpfByYear: Record<string, number>;
+  cpfCycle: CpfCycle | null; // último ciclo aberto
   rows: Record<string, RowCalc>;
 };
 
@@ -47,7 +61,7 @@ export function replay(ops: Operation[]): Replay {
   let revenue = 0;
   let sales = 0;
   const rows: Record<string, RowCalc> = {};
-  const cpfByYear: Record<string, number> = {};
+  let cycle: CpfCycle | null = null;
   const out = (w: Wallet, q: number) => {
     const c = w.q > 0 ? w.c * Math.min(q / w.q, 1) : 0;
     w.q -= q;
@@ -84,18 +98,26 @@ export function replay(ops: Operation[]): Replay {
       d.profit = value - d.cost;
       d.milheiro = o.qty ? (value / o.qty) * 1000 : 0;
       d.costMilheiro = o.qty ? (d.cost / o.qty) * 1000 : 0;
-      d.cpfYear = o.date.slice(0, 4);
-      d.cpfBefore = cpfByYear[d.cpfYear] || 0;
-      d.cpfAfter = d.cpfBefore + (o.cpfQty || 0);
+      const n = o.cpfQty || 0;
+      const active = cycle && o.date < cycle.end ? cycle : null;
+      // A primeira emissão após o ciclo anterior vencer abre um novo ciclo de 12 meses.
+      if (!active && n > 0) cycle = { start: o.date, end: plus12Months(o.date), used: 0 };
+      const cur = active || (n > 0 ? cycle : null);
+      d.cpfBefore = cur ? cur.used : 0;
+      d.cpfAfter = d.cpfBefore + n;
       d.cpfOver = d.cpfAfter > CPF_LIMIT;
-      cpfByYear[d.cpfYear] = d.cpfAfter;
+      if (cur) {
+        cur.used = d.cpfAfter;
+        d.cpfCycleStart = cur.start;
+        d.cpfCycleEnd = cur.end;
+      }
       profit += d.profit;
       revenue += value;
       sales++;
     }
     rows[o.id] = d;
   }
-  return { L, T, profit, revenue, sales, cpfByYear, rows };
+  return { L, T, profit, revenue, sales, cpfCycle: cycle, rows };
 }
 
 export type Totals = { lq: number; lc: number; tq: number; tc: number; profit: number; revenue: number; sales: number };

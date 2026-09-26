@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check } from '@phosphor-icons/react';
 import { CPF_LIMIT, replay } from '../lib/calc.ts';
-import { dec, maskQty, money, num, parseBR, parsePct } from '../lib/format.ts';
+import { dec, dt, maskQty, money, num, parseBR, parsePct } from '../lib/format.ts';
 import { profitColor } from '../lib/rows.ts';
 import type { Data, Operation, OpType } from '../lib/types.ts';
 import { Dialog, ErrorLine, Seg } from './ui.tsx';
@@ -105,10 +105,15 @@ export function OpModal({ initial, data, onClose, onSave }: {
       { label: 'Custo das milhas vendidas', value: money(d.cost) },
       { label: 'Milheiro de venda', value: money(d.milheiro) },
       { label: 'Lucro', value: money(d.profit), color: profitColor(d.profit || 0) },
-      { label: `CPFs emitidos em ${d.cpfYear || '—'}`, value: `${d.cpfBefore || 0} → ${d.cpfAfter || 0} de ${CPF_LIMIT}`, color: d.cpfOver ? 'var(--color-accent-300)' : undefined },
+      {
+        label: d.cpfCycleStart ? `CPFs no ciclo (desde ${dt(d.cpfCycleStart)})` : 'CPFs no ciclo',
+        value: `${d.cpfBefore || 0} → ${d.cpfAfter || 0} de ${CPF_LIMIT}`,
+        color: d.cpfOver ? 'var(--color-accent-300)' : undefined,
+      },
     ];
+    if (d.cpfCycleEnd) lines.push({ label: 'Contador zera em', value: dt(d.cpfCycleEnd) });
   }
-  if (d.cpfOver && !error) lines.push({ label: 'Atenção', value: `Limite de ${CPF_LIMIT} CPFs no ano excedido`, color: 'var(--color-accent-300)' });
+  if (d.cpfOver && !error) lines.push({ label: 'Atenção', value: `Limite de ${CPF_LIMIT} CPFs no ciclo excedido`, color: 'var(--color-accent-300)' });
   if (d.insufficient && !error) lines.push({ label: 'Atenção', value: 'Saldo insuficiente nesta data', color: 'var(--color-accent-300)' });
 
   async function save() {
@@ -119,7 +124,7 @@ export function OpModal({ initial, data, onClose, onSave }: {
     if ((dr.bonus || 0) < 0 || (dr.bonusQty || 0) < 0) return setError('Bônus inválido.');
     if (op.type === 'venda' && !((dr.cpfQty || 0) > 0)) return setError('Informe os CPFs emitidos.');
     if (d.insufficient) return setError('Saldo insuficiente na data informada.');
-    if (d.cpfOver) return setError(`Limite de ${CPF_LIMIT} CPFs em ${d.cpfYear} excedido (restam ${Math.max(CPF_LIMIT - (d.cpfBefore || 0), 0)}).`);
+    if (d.cpfOver) return setError(`Limite de ${CPF_LIMIT} CPFs excedido (restam ${Math.max(CPF_LIMIT - (d.cpfBefore || 0), 0)}; zera em ${dt(d.cpfCycleEnd)}).`);
     const rec: Operation = { id: op.id || '', accountId: op.accountId, type: op.type, date: op.date, qty: dr.qty, createdAt: op.createdAt || Date.now() };
     if (op.type === 'transf') rec.bonus = dr.bonus;
     else {
