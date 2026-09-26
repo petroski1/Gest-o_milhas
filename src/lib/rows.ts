@@ -10,6 +10,7 @@ export type Row = {
   typeLabel: string;
   tagClass: string;
   warn: boolean;
+  cpfWarn: boolean;
   qty: string;
   qtySub: string;
   value: string;
@@ -31,6 +32,7 @@ export function buildRow(o: Operation, d: RowCalc, a: Account): Row {
     sortKey: o.date + '|' + String(o.createdAt || 0).padStart(16, '0'),
     date: dt(o.date),
     warn: !!d.insufficient,
+    cpfWarn: !!d.cpfOver,
   };
   const bb = buyBonus(o);
   const bq = (unit: string) =>
@@ -73,7 +75,7 @@ export function buildRow(o: Operation, d: RowCalc, a: Account): Row {
     typeLabel: 'Venda LATAM',
     tagClass: 'tag-accent',
     qty: num(o.qty),
-    qtySub: 'milhas LATAM',
+    qtySub: o.cpfQty ? `milhas LATAM · ${o.cpfQty === 1 ? '1 CPF' : `${o.cpfQty} CPFs`}` : 'milhas LATAM',
     value: money(o.value),
     valueSub: 'recebido',
     milheiro: money(d.milheiro),

@@ -74,7 +74,7 @@ export const api = {
     const d = await rpc<{ accounts: Account[]; ops: Operation[] }>('gm_load', { p_token: token() });
     return {
       accounts: (d.accounts || []).map(a => ({ ...a, password: a.password || '' })),
-      ops: (d.ops || []).map(o => ({ ...o, qty: +o.qty, value: o.value != null ? +o.value : undefined, bonus: o.bonus != null ? +o.bonus : undefined, bonusQty: o.bonusQty != null ? +o.bonusQty : undefined, createdAt: +o.createdAt })),
+      ops: (d.ops || []).map(o => ({ ...o, qty: +o.qty, value: o.value != null ? +o.value : undefined, bonus: o.bonus != null ? +o.bonus : undefined, bonusQty: o.bonusQty != null ? +o.bonusQty : undefined, cpfQty: o.cpfQty != null ? +o.cpfQty : undefined, createdAt: +o.createdAt })),
     };
   },
   saveAccount: (a: Account) => rpc<void>('gm_save_account', { p_token: token(), p_acc: a }),

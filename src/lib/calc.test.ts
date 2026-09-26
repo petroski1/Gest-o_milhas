@@ -41,3 +41,18 @@ test('ordem cronológica e saldo insuficiente na data', () => {
   ]);
   assert.equal(r.rows['v'].insufficient, true);
 });
+
+test('CPFs emitidos: soma por ano civil e sinaliza acima de 24', () => {
+  const r = replay([
+    op({ id: 'c', type: 'compra_latam', date: '2025-01-01', qty: 1000000, value: 20000 }),
+    op({ id: 'v1', type: 'venda', date: '2025-06-01', qty: 10000, value: 300, cpfQty: 20 }),
+    op({ id: 'v2', type: 'venda', date: '2025-12-01', qty: 10000, value: 300, cpfQty: 5 }),
+    op({ id: 'v3', type: 'venda', date: '2026-01-02', qty: 10000, value: 300, cpfQty: 4 }),
+  ]);
+  assert.equal(r.cpfByYear['2025'], 25);
+  assert.equal(r.cpfByYear['2026'], 4);
+  assert.equal(r.rows['v1'].cpfOver, false);
+  assert.equal(r.rows['v2'].cpfBefore, 20);
+  assert.equal(r.rows['v2'].cpfOver, true);
+  assert.equal(r.rows['v3'].cpfOver, false);
+});

@@ -104,7 +104,7 @@ export default function App() {
     if (!data.accounts.length) { setAcc(null); return; }
     const ctx = accountId
       || (view === 'hist' && histAccount !== 'all' ? histAccount : dashFilter !== 'all' ? dashFilter : data.accounts[0].id);
-    setOp({ accountId: ctx, type: type || 'compra', date: today(), qty: '', value: '', bonus: '25', bonusQty: '', createdAt: Date.now() });
+    setOp({ accountId: ctx, type: type || 'compra', date: today(), qty: '', value: '', bonus: '25', bonusQty: '', cpfQty: '', createdAt: Date.now() });
   }
 
   async function saveOp(o: Operation) {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Check } from '@phosphor-icons/react';
-import { replay } from '../lib/calc.ts';
+import { CPF_LIMIT, replay } from '../lib/calc.ts';
 import { dec, maskQty, money, num, parseBR, parsePct } from '../lib/format.ts';
 import { profitColor } from '../lib/rows.ts';
 import type { Data, Operation, OpType } from '../lib/types.ts';
@@ -15,6 +15,7 @@ export type OpDraft = {
   value: string;
   bonus: string;
   bonusQty: string;
+  cpfQty: string;
   createdAt: number;
 };
 
@@ -27,6 +28,7 @@ export const draftFromOp = (o: Operation): OpDraft => ({
   value: o.value != null ? dec(o.value) : '',
   bonus: o.type === 'transf' && o.bonus != null ? String(o.bonus).replace('.', ',') : '25',
   bonusQty: (o.type === 'compra' || o.type === 'compra_latam') && o.bonusQty ? num(o.bonusQty) : '',
+  cpfQty: o.type === 'venda' && o.cpfQty != null ? String(o.cpfQty) : '',
   createdAt: o.createdAt,
 });
 
@@ -42,6 +44,7 @@ function toOp(d: OpDraft): Operation {
     value: d.type === 'transf' ? undefined : parseBR(d.value),
     bonus: d.type === 'transf' ? parsePct(d.bonus) : undefined,
     bonusQty: isBuy(d.type) ? parseBR(d.bonusQty) : undefined,
+    cpfQty: d.type === 'venda' ? parseInt(d.cpfQty, 10) || 0 : undefined,
     createdAt: d.createdAt,
   };
 }
@@ -102,8 +105,10 @@ export function OpModal({ initial, data, onClose, onSave }: {
       { label: 'Custo das milhas vendidas', value: money(d.cost) },
       { label: 'Milheiro de venda', value: money(d.milheiro) },
       { label: 'Lucro', value: money(d.profit), color: profitColor(d.profit || 0) },
+      { label: `CPFs emitidos em ${d.cpfYear || '—'}`, value: `${d.cpfBefore || 0} → ${d.cpfAfter || 0} de ${CPF_LIMIT}`, color: d.cpfOver ? 'var(--color-accent-300)' : undefined },
     ];
   }
+  if (d.cpfOver && !error) lines.push({ label: 'Atenção', value: `Limite de ${CPF_LIMIT} CPFs no ano excedido`, color: 'var(--color-accent-300)' });
   if (d.insufficient && !error) lines.push({ label: 'Atenção', value: 'Saldo insuficiente nesta data', color: 'var(--color-accent-300)' });
 
   async function save() {
@@ -112,12 +117,15 @@ export function OpModal({ initial, data, onClose, onSave }: {
     if (!(dr.qty > 0)) return setError('Informe a quantidade.');
     if (op.type !== 'transf' && !((dr.value || 0) > 0)) return setError('Informe o valor.');
     if ((dr.bonus || 0) < 0 || (dr.bonusQty || 0) < 0) return setError('Bônus inválido.');
+    if (op.type === 'venda' && !((dr.cpfQty || 0) > 0)) return setError('Informe os CPFs emitidos.');
     if (d.insufficient) return setError('Saldo insuficiente na data informada.');
+    if (d.cpfOver) return setError(`Limite de ${CPF_LIMIT} CPFs em ${d.cpfYear} excedido (restam ${Math.max(CPF_LIMIT - (d.cpfBefore || 0), 0)}).`);
     const rec: Operation = { id: op.id || '', accountId: op.accountId, type: op.type, date: op.date, qty: dr.qty, createdAt: op.createdAt || Date.now() };
     if (op.type === 'transf') rec.bonus = dr.bonus;
     else {
       rec.value = Math.round((dr.value || 0) * 100) / 100;
       if (op.type !== 'venda' && (dr.bonusQty || 0) > 0) rec.bonusQty = dr.bonusQty;
+      if (op.type === 'venda') rec.cpfQty = dr.cpfQty;
     }
     setBusy(true);
     try {
@@ -136,7 +144,7 @@ export function OpModal({ initial, data, onClose, onSave }: {
           {data.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
       </div>
-      <Seg name="optype" value={op.type} options={TYPES} onChange={type => set({ type })} stretch />
+      <Seg name="optype" value={op.type} options={TYPES} onChange={type => set({ type })} grid />
       <div className="muted" style={{ fontSize: 12, marginTop: -4 }}>{hint}</div>
       <div className="form-grid">
         <div className="field">
@@ -161,6 +169,12 @@ export function OpModal({ initial, data, onClose, onSave }: {
           <div className="field">
             <label htmlFor="op-bq">{op.type === 'compra_latam' ? 'Milhas de bônus' : 'Pontos de bônus'}</label>
             <input id="op-bq" className="input" inputMode="numeric" placeholder="0" value={op.bonusQty} onChange={e => set({ bonusQty: maskQty(e.target.value) })} />
+          </div>
+        )}
+        {op.type === 'venda' && (
+          <div className="field">
+            <label htmlFor="op-cpf">CPFs emitidos</label>
+            <input id="op-cpf" className="input" inputMode="numeric" placeholder="1" value={op.cpfQty} onChange={e => set({ cpfQty: e.target.value.replace(/\D/g, '').slice(0, 3) })} />
           </div>
         )}
         {op.type === 'transf' && (

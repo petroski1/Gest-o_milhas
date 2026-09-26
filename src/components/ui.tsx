@@ -4,15 +4,16 @@ import { avg, type Totals } from '../lib/calc.ts';
 import { money, num, plural } from '../lib/format.ts';
 import { profitColor, type Row } from '../lib/rows.ts';
 
-export function Seg<T extends string>({ name, value, options, onChange, stretch }: {
+export function Seg<T extends string>({ name, value, options, onChange, stretch, grid }: {
   name: string;
   value: T;
   options: { value: T; label: string }[];
   onChange: (v: T) => void;
   stretch?: boolean;
+  grid?: boolean;
 }) {
   return (
-    <div className="seg" role="radiogroup" style={stretch ? { display: 'flex' } : undefined}>
+    <div className={'seg' + (grid ? ' seg-grid' : '')} role="radiogroup" style={stretch ? { display: 'flex' } : undefined}>
       {options.map(o => (
         <label key={o.value} className={'seg-opt' + (o.value === value ? ' on' : '')} style={stretch ? { flex: 1 } : undefined}>
           <input type="radio" name={name} checked={o.value === value} onChange={() => onChange(o.value)} />
@@ -72,7 +73,7 @@ export function Confirm({ state, busy, onNo }: { state: ConfirmState; busy: bool
   );
 }
 
-export function StatCards({ t, compact }: { t: Totals; compact?: boolean }) {
+export function StatCards({ t, compact, cpf }: { t: Totals; compact?: boolean; cpf?: string }) {
   const lcm = money(avg({ q: t.lq, c: t.lc }));
   const tcm = money(avg({ q: t.tq, c: t.tc }));
   const split = `Livelo ${money(t.lc)} · LATAM ${money(t.tc)}`;
@@ -83,7 +84,7 @@ export function StatCards({ t, compact }: { t: Totals; compact?: boolean }) {
     return (
       <div className="grid-mini">
         <div className="card elev-sm" style={style}><div className="card-kicker">Livelo</div><div className="num" style={v}>{num(t.lq)}</div><div className="card-meta">CM {lcm} / milheiro</div></div>
-        <div className="card elev-sm" style={style}><div className="card-kicker">LATAM Pass</div><div className="num" style={v}>{num(t.tq)}</div><div className="card-meta">CM {tcm} / milheiro</div></div>
+        <div className="card elev-sm" style={style}><div className="card-kicker">LATAM Pass</div><div className="num" style={v}>{num(t.tq)}</div><div className="card-meta">CM {tcm} / milheiro</div>{cpf && <div className="card-meta">{cpf}</div>}</div>
         <div className="card elev-sm" style={style}><div className="card-kicker">Investido</div><div className="num" style={v}>{money(t.lc + t.tc)}</div><div className="card-meta">{split}</div></div>
         <div className="card elev-sm" style={style}><div className="card-kicker">Lucro</div><div className="num" style={{ ...v, color: profitColor(t.profit) }}>{money(t.profit)}</div><div className="card-meta">{profitMeta}</div></div>
       </div>
@@ -121,6 +122,7 @@ export function OpsTable({ rows, onEdit, onDelete }: { rows: Row[]; onEdit?: (r:
                 <div className="tags">
                   <span className={'tag ' + r.tagClass}>{r.typeLabel}</span>
                   {r.warn && <span className="tag tag-neutral">Saldo insuficiente</span>}
+                  {r.cpfWarn && <span className="tag tag-neutral">Limite de CPFs</span>}
                 </div>
               </td>
               <td className="r"><div>{r.qty}</div><div className="sub">{r.qtySub}</div></td>

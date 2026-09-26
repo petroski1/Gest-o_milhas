@@ -2,6 +2,9 @@ import type { Operation } from './types.ts';
 
 export type Wallet = { q: number; c: number };
 
+/** Limite de CPFs (beneficiários) emitidos por conta LATAM no ano civil. */
+export const CPF_LIMIT = 24;
+
 export type RowCalc = {
   credited?: number;
   milheiro?: number;
@@ -12,6 +15,10 @@ export type RowCalc = {
   cost?: number;
   profit?: number;
   costMilheiro?: number;
+  cpfYear?: string;
+  cpfBefore?: number; // CPFs já emitidos no ano antes desta venda
+  cpfAfter?: number;
+  cpfOver?: boolean;
 };
 
 export type Replay = {
@@ -20,6 +27,7 @@ export type Replay = {
   profit: number;
   revenue: number;
   sales: number;
+  cpfByYear: Record<string, number>;
   rows: Record<string, RowCalc>;
 };
 
@@ -39,6 +47,7 @@ export function replay(ops: Operation[]): Replay {
   let revenue = 0;
   let sales = 0;
   const rows: Record<string, RowCalc> = {};
+  const cpfByYear: Record<string, number> = {};
   const out = (w: Wallet, q: number) => {
     const c = w.q > 0 ? w.c * Math.min(q / w.q, 1) : 0;
     w.q -= q;
@@ -75,13 +84,18 @@ export function replay(ops: Operation[]): Replay {
       d.profit = value - d.cost;
       d.milheiro = o.qty ? (value / o.qty) * 1000 : 0;
       d.costMilheiro = o.qty ? (d.cost / o.qty) * 1000 : 0;
+      d.cpfYear = o.date.slice(0, 4);
+      d.cpfBefore = cpfByYear[d.cpfYear] || 0;
+      d.cpfAfter = d.cpfBefore + (o.cpfQty || 0);
+      d.cpfOver = d.cpfAfter > CPF_LIMIT;
+      cpfByYear[d.cpfYear] = d.cpfAfter;
       profit += d.profit;
       revenue += value;
       sales++;
     }
     rows[o.id] = d;
   }
-  return { L, T, profit, revenue, sales, rows };
+  return { L, T, profit, revenue, sales, cpfByYear, rows };
 }
 
 export type Totals = { lq: number; lc: number; tq: number; tc: number; profit: number; revenue: number; sales: number };

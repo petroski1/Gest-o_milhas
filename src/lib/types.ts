@@ -17,6 +17,7 @@ export type Operation = {
   value?: number; // compras (pago) e venda (recebido)
   bonus?: number; // somente transf: % de bônus
   bonusQty?: number; // somente compras: pontos/milhas de bônus (quantidade absoluta)
+  cpfQty?: number; // somente venda: CPFs (passageiros) emitidos
   createdAt: number;
 };
 

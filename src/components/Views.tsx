@@ -1,6 +1,6 @@
 import { ArrowRight, ListBullets, MagnifyingGlass, Minus, PencilSimple, Plus, UserPlus } from '@phosphor-icons/react';
-import { avg, totals, type Replay } from '../lib/calc.ts';
-import { dec, money, num, plural } from '../lib/format.ts';
+import { avg, CPF_LIMIT, totals, type Replay } from '../lib/calc.ts';
+import { dec, money, num, plural, today } from '../lib/format.ts';
 import type { Row } from '../lib/rows.ts';
 import type { Account, OpType } from '../lib/types.ts';
 import { OpsTable, Seg, StatCards } from './ui.tsx';
@@ -47,6 +47,25 @@ export function Dashboard({ accounts, reps, rows, filter, setFilter, goHist }: {
 
 type Mode = 'ambas' | 'livelo' | 'latam';
 
+export const cpfText = (rep: Replay) => {
+  const y = today().slice(0, 4);
+  return `CPFs ${y}: ${rep.cpfByYear[y] || 0} de ${CPF_LIMIT}`;
+};
+
+function CpfMeter({ used }: { used: number }) {
+  const pct = Math.min(used / CPF_LIMIT, 1) * 100;
+  const full = used >= CPF_LIMIT;
+  return (
+    <div className="cpf-meter" title={`CPFs emitidos em ${today().slice(0, 4)} (limite ${CPF_LIMIT} por ano)`}>
+      <div className="cpf-meter-row">
+        <span>CPFs {today().slice(0, 4)}</span>
+        <span className="num" style={{ color: full ? 'var(--color-accent-300)' : 'var(--color-text)' }}>{used} / {CPF_LIMIT}{full ? ' · limite atingido' : ` · restam ${CPF_LIMIT - used}`}</span>
+      </div>
+      <div className="cpf-bar"><div style={{ width: `${pct}%` }} /></div>
+    </div>
+  );
+}
+
 function WalletCard({ account, rep, prog, onOp, onExtrato }: {
   account: Account; rep: Replay; prog: 'livelo' | 'latam'; onOp: (id: string, t: OpType) => void; onExtrato: (id: string) => void;
 }) {
@@ -67,6 +86,7 @@ function WalletCard({ account, rep, prog, onOp, onExtrato }: {
         <div className="fade-line" />
         <div className="v">{num(w.q)}</div><div className="v">{dec(avg(w))}</div><div className="v">{dec(w.c)}</div>
       </div>
+      {prog === 'latam' && <CpfMeter used={rep.cpfByYear[today().slice(0, 4)] || 0} />}
       <div className="wallet-actions">
         <button className="btn btn-primary btn-sm" onClick={() => onOp(account.id, prog === 'livelo' ? 'compra' : 'compra_latam')}><Plus />Comprar</button>
         <button className="btn btn-secondary btn-sm" onClick={() => onOp(account.id, prog === 'livelo' ? 'transf' : 'venda')}><Minus />{prog === 'livelo' ? 'Transferir' : 'Vender'}</button>
@@ -166,7 +186,7 @@ export function Historico({ accounts, reps, rows, account, setAccount, type, set
               <button className="btn btn-secondary" onClick={() => onNewOp(a.id)}><Plus className="icon" />Operação</button>
             </div>
           </div>
-          <StatCards t={totals([reps[a.id]])} compact />
+          <StatCards t={totals([reps[a.id]])} compact cpf={cpfText(reps[a.id])} />
         </div>
       )}
       <div className="card elev-sm" style={{ padding: 16, gap: 10 }}>
