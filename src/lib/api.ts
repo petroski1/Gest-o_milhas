@@ -1,13 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Account, Data, Operation } from './types.ts';
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+// Valores públicos do projeto Supabase (a chave publishable vai no navegador de qualquer forma).
+// Variáveis VITE_SUPABASE_* não vazias têm prioridade.
+const DEFAULT_URL = 'https://ahfrojfhttvpqjgobrqb.supabase.co';
+const DEFAULT_KEY = 'sb_publishable_8tg9NZnzAgTZBnmFgZ1RNg_GW8R0EZQ';
+const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim() || DEFAULT_URL;
+const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim() || DEFAULT_KEY;
 
 export const configured = !!(url && key);
 
 const sb = configured
-  ? createClient(url!, key!, { auth: { persistSession: false, autoRefreshToken: false } })
+  ? createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
   : null;
 
 const SESS = 'gestor-milhas-session';
