@@ -159,7 +159,7 @@ export function Historico({ accounts, reps, rows, account, setAccount, type, set
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 18, fontWeight: 500 }}>{a.name}</div>
-              <div className="muted" style={{ fontSize: 12, overflowWrap: 'anywhere' }}>{[a.cpf, a.email].filter(Boolean).join(' · ') || 'Sem CPF e e-mail'}</div>
+              <div className="muted" style={{ fontSize: 12, overflowWrap: 'anywhere' }}>{[a.cpf, a.email, a.password && `Senha: ${a.password}`].filter(Boolean).join(' · ') || 'Sem CPF e e-mail'}</div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="btn btn-ghost" onClick={() => onEditAcc(a)}><PencilSimple className="icon" />Editar conta</button>

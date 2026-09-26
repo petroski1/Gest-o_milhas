@@ -10,7 +10,7 @@ export function AccModal({ initial, onClose, onSave, onDelete }: {
   onSave: (a: Account) => Promise<void>;
   onDelete: (a: Account) => void;
 }) {
-  const [acc, setAcc] = useState<Account>(initial ? { ...initial } : { id: '', name: '', cpf: '', email: '' });
+  const [acc, setAcc] = useState<Account>(initial ? { ...initial } : { id: '', name: '', cpf: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (p: Partial<Account>) => { setAcc(s => ({ ...s, ...p })); setError(''); };
@@ -33,6 +33,7 @@ export function AccModal({ initial, onClose, onSave, onDelete }: {
       <div className="field"><label htmlFor="acc-name">Nome</label><input id="acc-name" className="input" placeholder="Nome do titular" value={acc.name} onChange={e => set({ name: e.target.value })} autoFocus /></div>
       <div className="field"><label htmlFor="acc-cpf">CPF</label><input id="acc-cpf" className="input" inputMode="numeric" placeholder="000.000.000-00" value={acc.cpf} onChange={e => set({ cpf: maskCpf(e.target.value) })} /></div>
       <div className="field"><label htmlFor="acc-email">E-mail</label><input id="acc-email" className="input" type="email" placeholder="nome@email.com" value={acc.email} onChange={e => set({ email: e.target.value })} /></div>
+      <div className="field"><label htmlFor="acc-pass">Senha</label><input id="acc-pass" className="input" type="text" placeholder="Senha da conta" autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={acc.password} onChange={e => set({ password: e.target.value })} /></div>
       <ErrorLine>{error}</ErrorLine>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
         {initial && (

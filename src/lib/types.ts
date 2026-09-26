@@ -3,6 +3,7 @@ export type Account = {
   name: string;
   cpf: string;
   email: string;
+  password: string; // senha da conta no programa (exibida em texto)
 };
 
 export type OpType = 'compra' | 'compra_latam' | 'transf' | 'venda';

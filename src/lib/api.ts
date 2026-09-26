@@ -73,7 +73,7 @@ export const api = {
   load: async (): Promise<Data> => {
     const d = await rpc<{ accounts: Account[]; ops: Operation[] }>('gm_load', { p_token: token() });
     return {
-      accounts: d.accounts || [],
+      accounts: (d.accounts || []).map(a => ({ ...a, password: a.password || '' })),
       ops: (d.ops || []).map(o => ({ ...o, qty: +o.qty, value: o.value != null ? +o.value : undefined, bonus: o.bonus != null ? +o.bonus : undefined, bonusQty: o.bonusQty != null ? +o.bonusQty : undefined, createdAt: +o.createdAt })),
     };
   },
