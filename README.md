@@ -36,7 +36,9 @@ npm run dev
 npm test                     # testes das regras de cálculo
 ```
 
-## Variáveis de ambiente (Vercel)
+## Variáveis de ambiente
+
+Já vêm em `.env.production` (valores públicos). Para usar outro projeto Supabase, defina na Vercel:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY` (chave *publishable* / anon — é pública por natureza)
