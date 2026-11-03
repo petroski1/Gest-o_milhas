@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Check } from '@phosphor-icons/react';
-import { CPF_LIMIT, replay } from '../lib/calc.ts';
+import { CPF_LIMIT, emptyReplay, replayAll } from '../lib/calc.ts';
 import { dec, dt, maskQty, money, num, parseBR, parsePct } from '../lib/format.ts';
 import { profitColor } from '../lib/rows.ts';
 import type { Data, Operation, OpType } from '../lib/types.ts';
@@ -16,6 +16,7 @@ export type OpDraft = {
   bonus: string;
   bonusQty: string;
   cpfQty: string;
+  toAccountId: string;
   createdAt: number;
 };
 
@@ -29,15 +30,18 @@ export const draftFromOp = (o: Operation): OpDraft => ({
   bonus: o.type === 'transf' && o.bonus != null ? String(o.bonus).replace('.', ',') : '25',
   bonusQty: (o.type === 'compra' || o.type === 'compra_latam') && o.bonusQty ? num(o.bonusQty) : '',
   cpfQty: o.type === 'venda' && o.cpfQty != null ? String(o.cpfQty) : '',
+  toAccountId: o.toAccountId || '',
   createdAt: o.createdAt,
 });
 
 const isBuy = (t: OpType) => t === 'compra' || t === 'compra_latam';
+const noValue = (t: OpType) => t === 'transf' || t === 'transf_livelo'; // valor opcional (taxa) ou inexistente
 
 function toOp(d: OpDraft): Operation {
   return {
     id: d.id || '__draft',
     accountId: d.accountId,
+    toAccountId: d.type === 'transf_livelo' ? d.toAccountId : undefined,
     type: d.type,
     date: d.date || '9999-12-31',
     qty: parseBR(d.qty),
@@ -51,7 +55,8 @@ function toOp(d: OpDraft): Operation {
 
 const TYPES: { value: OpType; label: string }[] = [
   { value: 'compra', label: 'Compra Livelo' },
-  { value: 'transf', label: 'Transferir' },
+  { value: 'transf', label: 'Livelo → LATAM' },
+  { value: 'transf_livelo', label: 'Livelo → Livelo' },
   { value: 'compra_latam', label: 'Compra LATAM' },
   { value: 'venda', label: 'Vender' },
 ];
@@ -68,12 +73,26 @@ export function OpModal({ initial, data, onClose, onSave }: {
   const set = (p: Partial<OpDraft>) => { setOpState(s => ({ ...s, ...p })); setError(''); };
 
   const dr = toOp(op);
-  const rep = replay([...data.ops.filter(o => o.accountId === op.accountId && o.id !== op.id), dr]);
+  // Reprocessa todas as contas: transferências entre contas Livelo mexem no saldo e no custo de ambas.
+  const after = replayAll([...data.ops.filter(o => o.id !== op.id), dr]);
+  const before = replayAll(data.ops);
+  const rep = after[op.accountId] || emptyReplay();
   const d = rep.rows[dr.id] || {};
-  // Venda posterior que passaria do limite de CPFs por causa desta operação (ex.: lançamento retroativo).
-  const accountOps = data.ops.filter(o => o.accountId === op.accountId);
-  const baseline = replay(accountOps);
-  const laterOver = accountOps.find(o => o.id !== op.id && rep.rows[o.id]?.cpfOver && !baseline.rows[o.id]?.cpfOver);
+  const toAcc = data.accounts.find(a => a.id === op.toAccountId);
+  const others = data.accounts.filter(a => a.id !== op.accountId);
+  // Operação posterior que ficaria inválida por causa desta (ex.: lançamento retroativo ou edição),
+  // em qualquer conta afetada: estouro de CPFs ou saldo insuficiente.
+  const affected = new Set([op.accountId, op.toAccountId, initial.accountId, initial.toAccountId].filter(Boolean) as string[]);
+  const broke = (id: string, k: 'cpfOver' | 'insufficient') => {
+    for (const acc of affected) {
+      const a = after[acc]?.rows[id], b = before[acc]?.rows[id];
+      if (a?.[k] && !b?.[k]) return true;
+    }
+    return false;
+  };
+  const later = data.ops.filter(o => o.id !== op.id);
+  const laterOver = later.find(o => broke(o.id, 'cpfOver'));
+  const laterShort = later.find(o => broke(o.id, 'insufficient'));
 
   type Line = { label: string; value: string; color?: string };
   let lines: Line[] = [];
@@ -101,6 +120,18 @@ export function OpModal({ initial, data, onClose, onSave }: {
       { label: 'Entram na LATAM', value: num(d.credited) + ' milhas' },
       { label: 'Milheiro na LATAM', value: money(d.milheiro), color: 'var(--color-accent-300)' },
     ];
+  } else if (op.type === 'transf_livelo') {
+    qtyLabel = 'Pontos transferidos'; valueLabel = 'Taxa paga (R$, opcional)';
+    hint = 'Sai desta conta pelo custo médio e entra na outra conta Livelo com o mesmo custo (mais a taxa, se houver).';
+    const dest = toAcc ? after[toAcc.id]?.rows[dr.id] : undefined;
+    lines = [
+      { label: 'Saldo Livelo na data', value: num(d.availBefore) + ' pts' },
+      { label: 'Custo médio Livelo', value: money(d.avgBefore) },
+      { label: 'Custo transferido', value: money(d.cost) + (d.fee ? ` + taxa ${money(d.fee)}` : '') },
+      { label: `Entram em ${toAcc?.name || 'destino'}`, value: num(d.credited) + ' pts' },
+      { label: 'Milheiro da entrada', value: money(d.milheiro), color: 'var(--color-accent-300)' },
+    ];
+    if (dest) lines.push({ label: `Custo médio Livelo de ${toAcc!.name} depois`, value: money(dest.avgAfter) });
   } else {
     qtyLabel = 'Quantidade de milhas'; valueLabel = 'Valor recebido (R$)'; hint = 'Baixa da LATAM pelo custo médio atual.';
     lines = [
@@ -125,7 +156,9 @@ export function OpModal({ initial, data, onClose, onSave }: {
     if (!data.accounts.find(a => a.id === op.accountId)) return setError('Selecione uma conta.');
     if (!op.date) return setError('Informe a data.');
     if (!(dr.qty > 0)) return setError('Informe a quantidade.');
-    if (op.type !== 'transf' && !((dr.value || 0) > 0)) return setError('Informe o valor.');
+    if (op.type === 'transf_livelo' && !toAcc) return setError('Selecione a conta Livelo de destino.');
+    if (op.type === 'transf_livelo' && toAcc!.id === op.accountId) return setError('A conta de destino deve ser diferente da origem.');
+    if (!noValue(op.type) && !((dr.value || 0) > 0)) return setError('Informe o valor.');
     if ((dr.bonus || 0) < 0 || (dr.bonusQty || 0) < 0) return setError('Bônus inválido.');
     if (op.type === 'venda' && !((dr.cpfQty || 0) > 0)) return setError('Informe os CPFs emitidos.');
     if (d.insufficient) return setError('Saldo insuficiente na data informada.');
@@ -135,9 +168,13 @@ export function OpModal({ initial, data, onClose, onSave }: {
       return setError(`Limite de ${CPF_LIMIT} CPFs excedido: disponíveis ${free} nesta data.${next}`);
     }
     if (laterOver) return setError(`Com esta operação, a venda de ${dt(laterOver.date)} passaria do limite de ${CPF_LIMIT} CPFs.`);
+    if (laterShort) return setError(`Com esta operação, o lançamento de ${dt(laterShort.date)} ficaria com saldo insuficiente.`);
     const rec: Operation = { id: op.id || '', accountId: op.accountId, type: op.type, date: op.date, qty: dr.qty, createdAt: op.createdAt || Date.now() };
     if (op.type === 'transf') rec.bonus = dr.bonus;
-    else {
+    else if (op.type === 'transf_livelo') {
+      rec.toAccountId = op.toAccountId;
+      if ((dr.value || 0) > 0) rec.value = Math.round((dr.value || 0) * 100) / 100;
+    } else {
       rec.value = Math.round((dr.value || 0) * 100) / 100;
       if (op.type !== 'venda' && (dr.bonusQty || 0) > 0) rec.bonusQty = dr.bonusQty;
       if (op.type === 'venda') rec.cpfQty = dr.cpfQty;
@@ -154,11 +191,20 @@ export function OpModal({ initial, data, onClose, onSave }: {
   return (
     <Dialog title={op.id ? 'Editar operação' : 'Nova operação'} onClose={onClose}>
       <div className="field">
-        <label htmlFor="op-acc">Conta</label>
-        <select id="op-acc" className="input" value={op.accountId} onChange={e => set({ accountId: e.target.value })}>
+        <label htmlFor="op-acc">{op.type === 'transf_livelo' ? 'Conta de origem' : 'Conta'}</label>
+        <select id="op-acc" className="input" value={op.accountId} onChange={e => set({ accountId: e.target.value, ...(e.target.value === op.toAccountId ? { toAccountId: '' } : {}) })}>
           {data.accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
         </select>
       </div>
+      {op.type === 'transf_livelo' && (
+        <div className="field">
+          <label htmlFor="op-to">Conta Livelo de destino</label>
+          <select id="op-to" className="input" value={op.toAccountId} onChange={e => set({ toAccountId: e.target.value })}>
+            <option value="">{others.length ? 'Selecione…' : 'Cadastre outra conta'}</option>
+            {others.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        </div>
+      )}
       <Seg name="optype" value={op.type} options={TYPES} onChange={type => set({ type })} grid />
       <div className="muted" style={{ fontSize: 12, marginTop: -4 }}>{hint}</div>
       <div className="form-grid">
@@ -174,7 +220,7 @@ export function OpModal({ initial, data, onClose, onSave }: {
           <div className="field">
             <label htmlFor="op-val">{valueLabel}</label>
             <input
-              id="op-val" className="input" inputMode="decimal" placeholder="3.000,00" value={op.value}
+              id="op-val" className="input" inputMode="decimal" placeholder={op.type === 'transf_livelo' ? '0,00' : '3.000,00'} value={op.value}
               onChange={e => set({ value: e.target.value.replace(/[^\d.,]/g, '') })}
               onBlur={() => { const v = parseBR(op.value); if (v > 0) set({ value: dec(v) }); }}
             />

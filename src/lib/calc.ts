@@ -47,6 +47,8 @@ export type RowCalc = {
   cpfOver?: boolean;
   cpfRelease?: string; // data em que os CPFs desta venda são liberados
   cpfNext?: { date: string; qty: number } | null; // próxima liberação antes desta venda
+  side?: 'out' | 'in'; // transf_livelo: saída (origem) ou entrada (destino)
+  fee?: number; // transf_livelo: taxa paga, somada ao custo que entra no destino
 };
 
 export type Replay = {
@@ -67,15 +69,17 @@ export const buyBonus = (o: Pick<Operation, 'bonusQty'>) => +(o.bonusQty || 0) |
 export const sortOps = <T extends Pick<Operation, 'date' | 'createdAt'>>(ops: T[]) =>
   [...ops].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.createdAt || 0) - (b.createdAt || 0)));
 
-/** Reprocessa todas as operações de UMA conta em ordem cronológica. */
-export function replay(ops: Operation[]): Replay {
-  const L: Wallet = { q: 0, c: 0 };
-  const T: Wallet = { q: 0, c: 0 };
-  let profit = 0;
-  let revenue = 0;
-  let sales = 0;
-  const rows: Record<string, RowCalc> = {};
-  const cpfEmissions: CpfEmission[] = [];
+export const emptyReplay = (): Replay => ({ L: { q: 0, c: 0 }, T: { q: 0, c: 0 }, profit: 0, revenue: 0, sales: 0, cpfEmissions: [], rows: {} });
+
+/**
+ * Reprocessa as operações de TODAS as contas juntas, em ordem cronológica.
+ * Precisa ser conjunto porque a transferência Livelo → Livelo tira pontos de uma conta pelo custo médio
+ * dela na data e os coloca na outra conta com esse custo.
+ * Na transf_livelo, `rows[op.id]` da conta de origem traz a saída e o da conta de destino traz a entrada.
+ */
+export function replayAll(ops: Operation[]): Record<string, Replay> {
+  const reps: Record<string, Replay> = {};
+  const rep = (id: string) => (reps[id] ||= emptyReplay());
   const out = (w: Wallet, q: number) => {
     const c = w.q > 0 ? w.c * Math.min(q / w.q, 1) : 0;
     w.q -= q;
@@ -85,6 +89,8 @@ export function replay(ops: Operation[]): Replay {
   };
 
   for (const o of sortOps(ops)) {
+    const r = rep(o.accountId);
+    const { L, T } = r;
     const d: RowCalc = {};
     const value = o.value || 0;
     if (o.type === 'compra' || o.type === 'compra_latam') {
@@ -104,6 +110,24 @@ export function replay(ops: Operation[]): Replay {
       T.c += d.cost;
       d.milheiro = d.credited ? (d.cost / d.credited) * 1000 : 0;
       d.avgAfter = avg(T);
+    } else if (o.type === 'transf_livelo') {
+      d.side = 'out';
+      d.availBefore = L.q;
+      d.avgBefore = avg(L);
+      d.insufficient = o.qty > L.q + 0.0001;
+      d.cost = out(L, o.qty);
+      d.fee = value;
+      d.credited = o.qty;
+      d.milheiro = o.qty ? ((d.cost + value) / o.qty) * 1000 : 0;
+      d.avgAfter = avg(L);
+      if (o.toAccountId && o.toAccountId !== o.accountId) {
+        const dest = rep(o.toAccountId).L;
+        const di: RowCalc = { side: 'in', availBefore: dest.q, avgBefore: avg(dest), insufficient: d.insufficient, credited: o.qty, cost: d.cost + value, fee: value, milheiro: d.milheiro };
+        dest.q += o.qty;
+        dest.c += di.cost!;
+        di.avgAfter = avg(dest);
+        rep(o.toAccountId).rows[o.id] = di;
+      }
     } else if (o.type === 'venda') {
       d.availBefore = T.q;
       d.avgBefore = avg(T);
@@ -113,22 +137,27 @@ export function replay(ops: Operation[]): Replay {
       d.milheiro = o.qty ? (value / o.qty) * 1000 : 0;
       d.costMilheiro = o.qty ? (d.cost / o.qty) * 1000 : 0;
       const n = o.cpfQty || 0;
-      const st = cpfStatusAt(cpfEmissions, o.date);
+      const st = cpfStatusAt(r.cpfEmissions, o.date);
       d.cpfBefore = st.used;
       d.cpfAfter = st.used + n;
       d.cpfOver = d.cpfAfter > CPF_LIMIT;
       d.cpfNext = st.next;
       if (n > 0) {
         d.cpfRelease = plus12Months(o.date);
-        cpfEmissions.push({ opId: o.id, date: o.date, qty: n, release: d.cpfRelease });
+        r.cpfEmissions.push({ opId: o.id, date: o.date, qty: n, release: d.cpfRelease });
       }
-      profit += d.profit;
-      revenue += value;
-      sales++;
+      r.profit += d.profit;
+      r.revenue += value;
+      r.sales++;
     }
-    rows[o.id] = d;
+    r.rows[o.id] = d;
   }
-  return { L, T, profit, revenue, sales, cpfEmissions, rows };
+  return reps;
+}
+
+/** Replay de uma conta (por padrão, a da primeira operação). Transferências entre contas usam as demais operações recebidas. */
+export function replay(ops: Operation[], accountId = ops[0]?.accountId): Replay {
+  return (accountId && replayAll(ops)[accountId]) || emptyReplay();
 }
 
 export type Totals = { lq: number; lc: number; tq: number; tc: number; profit: number; revenue: number; sales: number };
