@@ -14,7 +14,7 @@ Sistema web pessoal para controlar compras de pontos Livelo, transferências par
 | Tabela | Conteúdo |
 | --- | --- |
 | `account` | contas (nome, CPF, e-mail) |
-| `operation` | lançamentos (`compra`, `compra_latam`, `transf`, `venda`) |
+| `operation` | lançamentos (`compra`, `compra_latam`, `transf`, `transf_livelo`, `venda`) |
 | `app_user` | usuário único (senha com bcrypt) |
 | `app_session` | sessões (hash SHA-256 do token, expiram em 30 dias) |
 | `login_attempt` | limite de 10 tentativas erradas a cada 15 min |
@@ -26,6 +26,11 @@ Nenhuma tabela é acessível diretamente pela chave pública; o app usa as funç
 O **primeiro acesso** cria o usuário e senha (só é possível enquanto não houver usuário).
 O sistema começa zerado. Os cálculos (custo médio, transferência, venda, validação de saldo na data)
 ficam em `src/lib/calc.ts` e são refeitos do zero a cada alteração.
+
+**Transferência Livelo → Livelo** (`transf_livelo`, migração `20261103000000_transf_livelo.sql`): os pontos
+saem da conta de origem pelo custo médio dela na data (já considerando compras e bônus) e entram na conta
+de destino com esse custo — mais a taxa paga, se informada. O custo médio do destino é recalculado e aparece
+no extrato das duas contas. Por isso o cálculo processa todas as contas juntas, em ordem cronológica.
 
 ## Rodar localmente
 

@@ -115,7 +115,7 @@ export function OpsTable({ rows, onEdit, onDelete }: { rows: Row[]; onEdit?: (r:
         </thead>
         <tbody>
           {rows.map(r => (
-            <tr key={r.op.id}>
+            <tr key={r.key}>
               <td className="nw">{r.date}</td>
               <td>{r.account.name}</td>
               <td>

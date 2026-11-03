@@ -6,7 +6,7 @@ import { OpModal, draftFromOp, type OpDraft } from './components/OpModal.tsx';
 import { Confirm, type ConfirmState } from './components/ui.tsx';
 import { Contas, Dashboard, Historico, type HistType } from './components/Views.tsx';
 import { api, AuthError, configured, session } from './lib/api.ts';
-import { replay, type Replay } from './lib/calc.ts';
+import { emptyReplay, replayAll, type Replay } from './lib/calc.ts';
 import { dt, num, today, uid } from './lib/format.ts';
 import { buildRow, type Row } from './lib/rows.ts';
 import type { Account, Data, Operation, OpType } from './lib/types.ts';
@@ -86,15 +86,18 @@ export default function App() {
   // ---- cálculos derivados ----
   const accById = useMemo(() => Object.fromEntries(data.accounts.map(a => [a.id, a])), [data.accounts]);
   const reps = useMemo(() => {
+    const all = replayAll(data.ops);
     const r: Record<string, Replay> = {};
-    for (const a of data.accounts) r[a.id] = replay(data.ops.filter(o => o.accountId === a.id));
+    for (const a of data.accounts) r[a.id] = all[a.id] || emptyReplay();
     return r;
   }, [data]);
   const rows = useMemo(() => {
     const out: Row[] = [];
     for (const o of data.ops) {
       const a = accById[o.accountId];
-      if (a) out.push(buildRow(o, reps[a.id].rows[o.id] || {}, a));
+      const to = o.type === 'transf_livelo' && o.toAccountId ? accById[o.toAccountId] : undefined;
+      if (a) out.push(buildRow(o, reps[a.id].rows[o.id] || {}, a, to));
+      if (to && a && to.id !== a.id) out.push(buildRow(o, reps[to.id].rows[o.id] || {}, to, a));
     }
     return out.sort((x, y) => (x.sortKey < y.sortKey ? 1 : x.sortKey > y.sortKey ? -1 : 0));
   }, [data.ops, accById, reps]);
@@ -104,7 +107,7 @@ export default function App() {
     if (!data.accounts.length) { setAcc(null); return; }
     const ctx = accountId
       || (view === 'hist' && histAccount !== 'all' ? histAccount : dashFilter !== 'all' ? dashFilter : data.accounts[0].id);
-    setOp({ accountId: ctx, type: type || 'compra', date: today(), qty: '', value: '', bonus: '25', bonusQty: '', cpfQty: '', createdAt: Date.now() });
+    setOp({ accountId: ctx, type: type || 'compra', date: today(), qty: '', value: '', bonus: '25', bonusQty: '', cpfQty: '', toAccountId: '', createdAt: Date.now() });
   }
 
   async function saveOp(o: Operation) {
@@ -134,11 +137,13 @@ export default function App() {
   }
 
   function askDeleteOp(r: Row) {
-    const labels: Record<OpType, string> = { compra: 'compra', compra_latam: 'compra', transf: 'transferência', venda: 'venda' };
+    const labels: Record<OpType, string> = { compra: 'compra', compra_latam: 'compra', transf: 'transferência', transf_livelo: 'transferência entre contas Livelo', venda: 'venda' };
     const o = r.op;
     setConfirm({
       title: 'Excluir lançamento',
-      body: `A ${labels[o.type]} de ${dt(o.date)} (${num(o.qty)}) da conta ${r.account.name} será removida e os custos médios serão recalculados.`,
+      body: o.type === 'transf_livelo'
+        ? `A transferência Livelo de ${dt(o.date)} (${num(o.qty)} pts) de ${accById[o.accountId]?.name} para ${accById[o.toAccountId || '']?.name} será removida das duas contas e os custos médios serão recalculados.`
+        : `A ${labels[o.type]} de ${dt(o.date)} (${num(o.qty)}) da conta ${r.account.name} será removida e os custos médios serão recalculados.`,
       yes: () => runConfirm(async () => {
         await api.deleteOp(o.id).catch(handleError);
         setData(d => ({ ...d, ops: d.ops.filter(x => x.id !== o.id) }));
@@ -147,13 +152,14 @@ export default function App() {
   }
 
   function askDeleteAcc(a: Account) {
-    const n = data.ops.filter(o => o.accountId === a.id).length;
+    const touches = (o: Operation) => o.accountId === a.id || o.toAccountId === a.id;
+    const n = data.ops.filter(touches).length;
     setConfirm({
       title: 'Excluir conta',
       body: `A conta ${a.name} e ${plural(n)} serão removidos permanentemente.`,
       yes: () => runConfirm(async () => {
         await api.deleteAccount(a.id).catch(handleError);
-        setData(d => ({ accounts: d.accounts.filter(x => x.id !== a.id), ops: d.ops.filter(o => o.accountId !== a.id) }));
+        setData(d => ({ accounts: d.accounts.filter(x => x.id !== a.id), ops: d.ops.filter(o => !touches(o)) }));
         setAcc(undefined);
         if (histAccount === a.id) setHistAccount('all');
         if (dashFilter === a.id) setDashFilter('all');

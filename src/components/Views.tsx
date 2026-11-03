@@ -1,4 +1,4 @@
-import { ArrowRight, ListBullets, MagnifyingGlass, Minus, PencilSimple, Plus, UserPlus } from '@phosphor-icons/react';
+import { ArrowRight, ArrowsLeftRight, ListBullets, MagnifyingGlass, Minus, PencilSimple, Plus, UserPlus } from '@phosphor-icons/react';
 import { avg, CPF_LIMIT, cpfStatusAt, totals, type Replay } from '../lib/calc.ts';
 import { dec, dt, money, num, plural, today } from '../lib/format.ts';
 import type { Row } from '../lib/rows.ts';
@@ -68,8 +68,8 @@ function CpfMeter({ rep }: { rep: Replay }) {
   );
 }
 
-function WalletCard({ account, rep, prog, onOp, onExtrato }: {
-  account: Account; rep: Replay; prog: 'livelo' | 'latam'; onOp: (id: string, t: OpType) => void; onExtrato: (id: string) => void;
+function WalletCard({ account, rep, prog, onOp, onExtrato, canSend }: {
+  account: Account; rep: Replay; prog: 'livelo' | 'latam'; onOp: (id: string, t: OpType) => void; onExtrato: (id: string) => void; canSend?: boolean;
 }) {
   const w = prog === 'livelo' ? rep.L : rep.T;
   return (
@@ -91,7 +91,10 @@ function WalletCard({ account, rep, prog, onOp, onExtrato }: {
       {prog === 'latam' && <CpfMeter rep={rep} />}
       <div className="wallet-actions">
         <button className="btn btn-primary btn-sm" onClick={() => onOp(account.id, prog === 'livelo' ? 'compra' : 'compra_latam')}><Plus />Comprar</button>
-        <button className="btn btn-secondary btn-sm" onClick={() => onOp(account.id, prog === 'livelo' ? 'transf' : 'venda')}><Minus />{prog === 'livelo' ? 'Transferir' : 'Vender'}</button>
+        <button className="btn btn-secondary btn-sm" onClick={() => onOp(account.id, prog === 'livelo' ? 'transf' : 'venda')}><Minus />{prog === 'livelo' ? 'Para LATAM' : 'Vender'}</button>
+        {prog === 'livelo' && canSend && (
+          <button className="btn btn-secondary btn-sm" title="Transferir para outra conta Livelo" onClick={() => onOp(account.id, 'transf_livelo')}><ArrowsLeftRight />Outra Livelo</button>
+        )}
         <button className="btn btn-ghost btn-icon btn-sm push" aria-label="Extrato" title="Extrato" onClick={() => onExtrato(account.id)}><ListBullets size={15} /></button>
       </div>
     </div>
@@ -136,7 +139,7 @@ export function Contas({ accounts, reps, query, setQuery, mode, setMode, onNewAc
           {list.map(a => (
             <div key={a.id} style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
               <div className="grid-pair">
-                <WalletCard account={a} rep={reps[a.id]} prog="livelo" onOp={onOp} onExtrato={onExtrato} />
+                <WalletCard account={a} rep={reps[a.id]} prog="livelo" onOp={onOp} onExtrato={onExtrato} canSend={accounts.length > 1} />
                 <WalletCard account={a} rep={reps[a.id]} prog="latam" onOp={onOp} onExtrato={onExtrato} />
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -148,7 +151,7 @@ export function Contas({ accounts, reps, query, setQuery, mode, setMode, onNewAc
         </div>
       ) : (
         <div className="grid-wallets">
-          {list.map(a => <WalletCard key={a.id} account={a} rep={reps[a.id]} prog={mode} onOp={onOp} onExtrato={onExtrato} />)}
+          {list.map(a => <WalletCard key={a.id} account={a} rep={reps[a.id]} prog={mode} onOp={onOp} onExtrato={onExtrato} canSend={accounts.length > 1} />)}
         </div>
       )}
     </section>
@@ -163,7 +166,7 @@ export function Historico({ accounts, reps, rows, account, setAccount, type, set
 }) {
   const list = rows.filter(r =>
     (account === 'all' || r.account.id === account) &&
-    (type === 'all' || r.op.type === type || (type === 'compra' && r.op.type === 'compra_latam')));
+    (type === 'all' || r.op.type === type || (type === 'compra' && r.op.type === 'compra_latam') || (type === 'transf' && r.op.type === 'transf_livelo')));
   const a = accounts.find(x => x.id === account);
   return (
     <section className="section">

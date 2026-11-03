@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { replay, avg, cpfStatusAt, plus12Months } from './calc.ts';
+import { replay, replayAll, avg, cpfStatusAt, plus12Months } from './calc.ts';
 import type { Operation } from './types.ts';
 
 const op = (p: Partial<Operation> & Pick<Operation, 'id' | 'type' | 'date' | 'qty'>): Operation => ({
@@ -80,4 +80,48 @@ test('cpfStatusAt: em uso, disponíveis e próxima liberação', () => {
 test('plus12Months trata 29/02', () => {
   assert.equal(plus12Months('2028-02-29'), '2029-03-01');
   assert.equal(plus12Months('2026-09-25'), '2027-09-25');
+});
+
+test('Livelo → Livelo: sai pelo custo médio da origem (com bônus) e recalcula o custo médio do destino', () => {
+  const r = replayAll([
+    // origem: 100.000 + 20.000 de bônus por R$ 3.000 → R$ 25,00/milheiro
+    op({ id: 'c1', accountId: 'a', type: 'compra', date: '2026-01-01', qty: 100000, value: 3000, bonusQty: 20000 }),
+    // destino: 50.000 por R$ 1.750 → R$ 35,00/milheiro
+    op({ id: 'c2', accountId: 'b', type: 'compra', date: '2026-01-01', qty: 50000, value: 1750 }),
+    op({ id: 't', accountId: 'a', toAccountId: 'b', type: 'transf_livelo', date: '2026-01-05', qty: 60000 }),
+  ]);
+  assert.equal(r.a.L.q, 60000);
+  assert.equal(r.a.L.c, 1500);
+  assert.equal(avg(r.a.L).toFixed(2), '25.00');
+  assert.equal(r.a.rows['t'].cost, 1500);
+  assert.equal(r.a.rows['t'].side, 'out');
+  assert.equal(r.b.L.q, 110000);
+  assert.equal(r.b.L.c, 3250);
+  assert.equal(avg(r.b.L).toFixed(2), '29.55'); // (1.750 + 1.500) / 110
+  assert.equal(r.b.rows['t'].side, 'in');
+  assert.equal(r.b.rows['t'].cost, 1500);
+});
+
+test('Livelo → Livelo: taxa entra no custo do destino e o destino pode transferir para a LATAM depois', () => {
+  const r = replayAll([
+    op({ id: 'c1', accountId: 'a', type: 'compra', date: '2026-01-01', qty: 100000, value: 3000 }),
+    op({ id: 't', accountId: 'a', toAccountId: 'b', type: 'transf_livelo', date: '2026-01-02', qty: 100000, value: 100 }),
+    op({ id: 'x', accountId: 'b', type: 'transf', date: '2026-01-03', qty: 100000, bonus: 25 }),
+  ]);
+  assert.equal(r.a.L.q, 0);
+  assert.equal(r.a.L.c, 0);
+  assert.equal(r.b.rows['t'].cost, 3100);
+  assert.equal(r.b.rows['x'].insufficient, false);
+  assert.equal(r.b.T.q, 125000);
+  assert.equal(avg(r.b.T).toFixed(2), '24.80'); // 3.100 / 125
+});
+
+test('Livelo → Livelo: saldo insuficiente na origem e ordem entre contas', () => {
+  const r = replayAll([
+    op({ id: 'x', accountId: 'b', type: 'transf', date: '2026-01-01', qty: 1000, bonus: 0 }), // antes de receber
+    op({ id: 't', accountId: 'a', toAccountId: 'b', type: 'transf_livelo', date: '2026-01-02', qty: 1000 }),
+  ]);
+  assert.equal(r.a.rows['t'].insufficient, true);
+  assert.equal(r.b.rows['x'].insufficient, true);
+  assert.equal(r.b.L.q, 0); // −1.000 da transferência sem saldo + 1.000 recebidos
 });

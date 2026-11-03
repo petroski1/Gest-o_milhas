@@ -3,6 +3,7 @@ import { dt, money, num } from './format.ts';
 import type { Account, Operation } from './types.ts';
 
 export type Row = {
+  key: string; // único por linha (a transf_livelo gera uma linha na origem e outra no destino)
   op: Operation;
   account: Account;
   sortKey: string;
@@ -24,9 +25,11 @@ export type Row = {
 export const profitColor = (v: number) =>
   v > 0.004 ? 'var(--color-accent-300)' : v < -0.004 ? 'var(--color-neutral-400)' : 'var(--color-text)';
 
-export function buildRow(o: Operation, d: RowCalc, a: Account): Row {
+/** `a` é a conta desta linha; `other` é a outra conta da transf_livelo. */
+export function buildRow(o: Operation, d: RowCalc, a: Account, other?: Account): Row {
   const muted = 'var(--color-neutral-600)';
   const base = {
+    key: o.id + (d.side === 'in' ? ':in' : ''),
     op: o,
     account: a,
     sortKey: o.date + '|' + String(o.createdAt || 0).padStart(16, '0'),
@@ -58,7 +61,7 @@ export function buildRow(o: Operation, d: RowCalc, a: Account): Row {
   if (o.type === 'transf') {
     return {
       ...base,
-      typeLabel: 'Transferência',
+      typeLabel: 'Livelo → LATAM',
       tagClass: 'tag-outline',
       qty: `${num(o.qty)} → ${num(d.credited)}`,
       qtySub: `bônus de ${String(o.bonus || 0).replace('.', ',')}%`,
@@ -66,6 +69,24 @@ export function buildRow(o: Operation, d: RowCalc, a: Account): Row {
       valueSub: 'custo transferido',
       milheiro: money(d.milheiro),
       milheiroSub: 'entrada na LATAM',
+      result: '—',
+      resultColor: muted,
+    };
+  }
+  if (o.type === 'transf_livelo') {
+    const inbound = d.side === 'in';
+    const name = other?.name || 'outra conta';
+    const fee = d.fee ? ` + taxa ${money(d.fee)}` : '';
+    return {
+      ...base,
+      typeLabel: inbound ? 'Livelo recebida' : 'Livelo enviada',
+      tagClass: 'tag-outline',
+      qty: (inbound ? '+' : '−') + num(o.qty),
+      qtySub: `pontos Livelo · ${inbound ? 'de' : 'para'} ${name}`,
+      value: money(d.cost),
+      valueSub: inbound ? `custo recebido${fee ? ' (com taxa)' : ''}` : `custo transferido${fee}`,
+      milheiro: money(d.milheiro),
+      milheiroSub: inbound ? 'entrada na Livelo' : `entrada em ${name}`,
       result: '—',
       resultColor: muted,
     };
