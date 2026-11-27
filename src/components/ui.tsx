@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { PencilSimple, Trash, WarningCircle, X } from '@phosphor-icons/react';
-import { avg, type Totals } from '../lib/calc.ts';
-import { money, num, plural } from '../lib/format.ts';
+import { avg, margin, roi, type Totals } from '../lib/calc.ts';
+import { money, num, pct, plural } from '../lib/format.ts';
 import { profitColor, type Row } from '../lib/rows.ts';
 
 export function Seg<T extends string>({ name, value, options, onChange, stretch, grid }: {
@@ -78,6 +78,9 @@ export function StatCards({ t, compact, cpf }: { t: Totals; compact?: boolean; c
   const tcm = money(avg({ q: t.tq, c: t.tc }));
   const split = `Livelo ${money(t.lc)} · LATAM ${money(t.tc)}`;
   const profitMeta = `${plural(t.sales, 'venda', 'vendas')} · receita ${money(t.revenue)}`;
+  const mg = margin(t.profit, t.revenue);
+  const marginValue = t.sales ? pct(mg) : '—';
+  const marginMeta = t.sales ? `sobre a receita · retorno de ${pct(roi(t.profit, t.revenue))} sobre o custo` : 'sem vendas ainda';
   if (compact) {
     const style = { padding: '12px 14px', gap: 2 };
     const v = { fontSize: 20, fontWeight: 500 } as const;
@@ -87,6 +90,7 @@ export function StatCards({ t, compact, cpf }: { t: Totals; compact?: boolean; c
         <div className="card elev-sm" style={style}><div className="card-kicker">LATAM Pass</div><div className="num" style={v}>{num(t.tq)}</div><div className="card-meta">CM {tcm} / milheiro</div>{cpf && <div className="card-meta">{cpf}</div>}</div>
         <div className="card elev-sm" style={style}><div className="card-kicker">Investido</div><div className="num" style={v}>{money(t.lc + t.tc)}</div><div className="card-meta">{split}</div></div>
         <div className="card elev-sm" style={style}><div className="card-kicker">Lucro</div><div className="num" style={{ ...v, color: profitColor(t.profit) }}>{money(t.profit)}</div><div className="card-meta">{profitMeta}</div></div>
+        <div className="card elev-sm" style={style}><div className="card-kicker">Margem de lucro</div><div className="num" style={{ ...v, color: profitColor(mg) }}>{marginValue}</div><div className="card-meta">{marginMeta}</div></div>
       </div>
     );
   }
@@ -97,6 +101,7 @@ export function StatCards({ t, compact, cpf }: { t: Totals; compact?: boolean; c
       <div className="card elev-sm" style={style}><div className="card-kicker">LATAM Pass</div><div className="card-value">{num(t.tq)}<small>milhas</small></div><div className="card-meta">Custo médio <b>{tcm}</b> / milheiro</div></div>
       <div className="card elev-sm" style={style}><div className="card-kicker">Total investido</div><div className="card-value">{money(t.lc + t.tc)}</div><div className="card-meta">{split}</div></div>
       <div className="card elev-sm" style={style}><div className="card-kicker">Lucro das vendas</div><div className="card-value" style={{ color: profitColor(t.profit) }}>{money(t.profit)}</div><div className="card-meta">{profitMeta}</div></div>
+      <div className="card elev-sm" style={style}><div className="card-kicker">Margem de lucro</div><div className="card-value" style={{ color: profitColor(mg) }}>{marginValue}</div><div className="card-meta">{marginMeta}</div></div>
     </div>
   );
 }
@@ -128,7 +133,7 @@ export function OpsTable({ rows, onEdit, onDelete }: { rows: Row[]; onEdit?: (r:
               <td className="r"><div>{r.qty}</div><div className="sub">{r.qtySub}</div></td>
               <td className="r"><div>{r.value}</div><div className="sub">{r.valueSub}</div></td>
               <td className="r"><div>{r.milheiro}</div><div className="sub">{r.milheiroSub}</div></td>
-              <td className="r" style={{ color: r.resultColor }}>{r.result}</td>
+              <td className="r"><div style={{ color: r.resultColor }}>{r.result}</div>{r.resultSub && <div className="sub">{r.resultSub}</div>}</td>
               {actions && (
                 <td className="r">
                   <div style={{ display: 'inline-flex', gap: 2 }}>

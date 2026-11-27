@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check } from '@phosphor-icons/react';
-import { CPF_LIMIT, emptyReplay, replayAll } from '../lib/calc.ts';
-import { dec, dt, maskQty, money, num, parseBR, parsePct } from '../lib/format.ts';
+import { CPF_LIMIT, emptyReplay, margin, replayAll } from '../lib/calc.ts';
+import { dec, dt, maskQty, money, num, parseBR, parsePct, pct } from '../lib/format.ts';
 import { profitColor } from '../lib/rows.ts';
 import type { Data, Operation, OpType } from '../lib/types.ts';
 import { Dialog, ErrorLine, Seg } from './ui.tsx';
@@ -140,6 +140,7 @@ export function OpModal({ initial, data, onClose, onSave }: {
       { label: 'Custo das milhas vendidas', value: money(d.cost) },
       { label: 'Milheiro de venda', value: money(d.milheiro) },
       { label: 'Lucro', value: money(d.profit), color: profitColor(d.profit || 0) },
+      { label: 'Margem de lucro', value: (dr.value || 0) > 0 ? pct(margin(d.profit || 0, dr.value || 0)) : '—', color: profitColor(d.profit || 0) },
       {
         label: 'CPFs em uso na data',
         value: `${d.cpfBefore || 0} → ${d.cpfAfter || 0} de ${CPF_LIMIT}`,

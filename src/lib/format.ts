@@ -41,5 +41,11 @@ export const maskQty = (s: string) => {
   const d = s.replace(/\D/g, '').slice(0, 12);
   return d ? num(parseInt(d, 10)) : '';
 };
+const pctFmt = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+/** Percentual com 1 casa: 0.2345 → "23,5%". */
+export const pct = (v?: number) => {
+  v = v || 0;
+  return (v < -0.0005 ? '−' : '') + pctFmt.format(Math.abs(v) * 100) + '%';
+};
 export const plural = (n: number, s: string, p: string) => (n === 1 ? `1 ${s}` : `${n} ${p}`);
 export const uid = (p: string) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
