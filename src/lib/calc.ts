@@ -162,6 +162,16 @@ export function replay(ops: Operation[], accountId = ops[0]?.accountId): Replay 
 
 export type Totals = { lq: number; lc: number; tq: number; tc: number; profit: number; revenue: number; sales: number };
 
+/**
+ * Margem de lucro das vendas = lucro ÷ receita (quanto da venda é lucro).
+ * Retorno sobre o custo = lucro ÷ custo das milhas vendidas.
+ */
+export const margin = (profit: number, revenue: number) => (revenue > 0.004 ? profit / revenue : 0);
+export const roi = (profit: number, revenue: number) => {
+  const cost = revenue - profit;
+  return cost > 0.004 ? profit / cost : 0;
+};
+
 export function totals(reps: (Replay | undefined)[]): Totals {
   const r: Totals = { lq: 0, lc: 0, tq: 0, tc: 0, profit: 0, revenue: 0, sales: 0 };
   for (const x of reps) {

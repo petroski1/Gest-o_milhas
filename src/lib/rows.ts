@@ -1,5 +1,5 @@
-import { buyBonus, type RowCalc } from './calc.ts';
-import { dt, money, num } from './format.ts';
+import { buyBonus, margin, type RowCalc } from './calc.ts';
+import { dt, money, num, pct } from './format.ts';
 import type { Account, Operation } from './types.ts';
 
 export type Row = {
@@ -19,6 +19,7 @@ export type Row = {
   milheiro: string;
   milheiroSub: string;
   result: string;
+  resultSub?: string; // venda: margem de lucro
   resultColor: string;
 };
 
@@ -102,6 +103,7 @@ export function buildRow(o: Operation, d: RowCalc, a: Account, other?: Account):
     milheiro: money(d.milheiro),
     milheiroSub: `custo ${money(d.costMilheiro)}`,
     result: money(d.profit),
+    resultSub: o.value ? `margem ${pct(margin(d.profit || 0, o.value))}` : undefined,
     resultColor: profitColor(d.profit || 0),
   };
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { replay, replayAll, avg, cpfStatusAt, plus12Months } from './calc.ts';
+import { replay, replayAll, avg, cpfStatusAt, plus12Months, margin, roi } from './calc.ts';
 import type { Operation } from './types.ts';
 
 const op = (p: Partial<Operation> & Pick<Operation, 'id' | 'type' | 'date' | 'qty'>): Operation => ({
@@ -124,4 +124,14 @@ test('Livelo → Livelo: saldo insuficiente na origem e ordem entre contas', () 
   assert.equal(r.a.rows['t'].insufficient, true);
   assert.equal(r.b.rows['x'].insufficient, true);
   assert.equal(r.b.L.q, 0); // −1.000 da transferência sem saldo + 1.000 recebidos
+});
+
+test('margem de lucro: lucro ÷ receita; retorno: lucro ÷ custo', () => {
+  const r = replay([
+    op({ id: '1', type: 'compra_latam', date: '2026-01-01', qty: 100000, value: 2000 }),
+    op({ id: '2', type: 'venda', date: '2026-01-03', qty: 50000, value: 1500 }), // custo 1.000, lucro 500
+  ]);
+  assert.equal(margin(r.profit, r.revenue).toFixed(4), '0.3333');
+  assert.equal(roi(r.profit, r.revenue), 0.5);
+  assert.equal(margin(0, 0), 0);
 });
